@@ -1,24 +1,117 @@
+import { makeMotobug } from "../entities/motobug";
+import { makeRing } from "../entities/ring";
 import { makeSonic } from "../entities/sonic";
 import k from "../kaplayCtx";
 
 export default function game() {
     k.setGravity(3100);
+    const citySfx = k.play("city", { volume: 0.2, loop: true });
 
     const bgPieceWidth = 1920;
     const platformWidth = 1280;
-    let gameSpeed = 300;
+    let gameSpeed = 600; // Start with a faster speed
+    let difficultyLevel = 1;
 
     const bgPieces = createBackgroundPieces();
     const platforms = createPlatforms();
+    const scoreText = k.add([
+        k.text("SCORE : 0", { font: "mania", size: 72 }),
+        k.pos(20, 20),
+    ]);
+
+    let score = 0;
+    let scoreMultiplier = 0;
 
     const sonic = makeSonic(k.vec2(200, 745));
     sonic.setControls();
     sonic.setEvents();
 
-    k.loop(1, () => {
-        gameSpeed += 50;
+    // Handle collision with an enemy
+    const handleEnemyCollision = (enemy) => {
+        if (!sonic.isGrounded()) {
+            k.play("destroy", { volume: 0.5 });
+            k.play("hyperRing", { volume: 0.5 });
+            k.destroy(enemy);
+            sonic.play("jump");
+            sonic.jump();
+            scoreMultiplier += 1;
+            score += 10 * scoreMultiplier;
+            updateScoreText();
+            showTemporaryText(`x${scoreMultiplier}`);
+        } else {
+            k.play("hurt", { volume: 0.5 });
+            k.setData("current-score", score);
+            k.go("gameover", citySfx);
+        }
+    };
+
+    // Update score text
+    const updateScoreText = () => {
+        scoreText.text = `SCORE : ${score}`;
+    };
+
+    // Show temporary UI text (e.g., "+1", "x2")
+    const showTemporaryText = (text) => {
+        sonic.ringCollectUI.text = text;
+        k.wait(1, () => {
+            sonic.ringCollectUI.text = "";
+        });
+    };
+
+    sonic.onCollide("ring", (ring) => {
+        k.play("ring", { volume: 0.5 });
+        k.destroy(ring);
+        score++;
+        updateScoreText();
+        showTemporaryText("+1");
     });
 
+    sonic.onCollide("enemy", handleEnemyCollision);
+
+    // Spawn rings and enemies at different positions
+    const spawnMotoBug = () => {
+        const motobug = makeMotobug(k.vec2(1950, 773));
+        motobug.onUpdate(() => {
+          if (gameSpeed < 3000) {
+            motobug.move(-(gameSpeed + 300), 0);
+            return;
+          }
+          motobug.move(-gameSpeed, 0);
+        });
+    
+        motobug.onExitScreen(() => {
+          if (motobug.pos.x < 0) k.destroy(motobug);
+        });
+    
+        const waitTime = k.rand(0.5, 2.5);
+    
+        k.wait(waitTime, spawnMotoBug);
+      };
+    
+      spawnMotoBug();
+    
+      const spawnRing = () => {
+        const ring = makeRing(k.vec2(1950, 745));
+        ring.onUpdate(() => {
+          ring.move(-gameSpeed, 0);
+        });
+        ring.onExitScreen(() => {
+          if (ring.pos.x < 0) k.destroy(ring);
+        });
+    
+        const waitTime = k.rand(0.5, 3);
+    
+        k.wait(waitTime, spawnRing);
+      };
+    
+      spawnRing();
+    // Increase game speed and difficulty dynamically
+    k.loop(0.8, () => {
+        if (gameSpeed < 3000) gameSpeed += 30;
+        if (gameSpeed % 500 === 0) difficultyLevel++;
+    });
+
+    // Add invisible ground collider
     k.add([
         k.rect(1920, 300),
         k.opacity(0),
@@ -27,7 +120,9 @@ export default function game() {
         k.body({ isStatic: true }),
     ]);
 
+    // Update game elements
     k.onUpdate(() => {
+        if (sonic.isGrounded()) scoreMultiplier = 0;
         updateBackground(bgPieces, bgPieceWidth, sonic);
         updatePlatforms(platforms, platformWidth, gameSpeed);
     });
@@ -70,11 +165,10 @@ export default function game() {
             bgPieces.push(bgPieces.shift());
         }
 
-        bgPieces[0].move(-100, 0);
-        bgPieces[1].moveTo(bgPieces[0].pos.x + bgPieceWidth * 2, 0);
-
-        bgPieces[0].moveTo(bgPieces[0].pos.x, -sonic.pos.y / 10 - 50);
-        bgPieces[1].moveTo(bgPieces[1].pos.x, -sonic.pos.y / 10 - 50);
+        bgPieces.forEach((piece) => {
+            piece.move(-100, 0);
+            piece.moveTo(piece.pos.x, -sonic.pos.y / 10 - 50);
+        });
     }
 
     function updatePlatforms(platforms, platformWidth, gameSpeed) {
@@ -83,7 +177,6 @@ export default function game() {
             platforms.push(platforms.shift());
         }
 
-        platforms[0].move(-gameSpeed, 0);
-        platforms[1].moveTo(platforms[0].pos.x + platforms[1].width * 4, 450);
+        platforms.forEach((platform) => platform.move(-gameSpeed, 0));
     }
 }
