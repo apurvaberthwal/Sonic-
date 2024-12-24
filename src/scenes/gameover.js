@@ -35,7 +35,9 @@ export default function gameover(citySfx) {
         k.anchor("center"),
     ]);
 
-    k.onButtonPress("jump", () => {
-        k.go("game");
+    k.wait(1, () => {
+        k.onButtonPress("jump", () => {
+            k.go("game");
+        });
     });
 }
